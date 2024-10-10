@@ -3,55 +3,55 @@ provider "aws" {
   region = "ap-south-1"
 }
 
-resource "aws_vpc" "devopsshack_vpc" {
+resource "aws_vpc" "muhannad_vpc" {
   cidr_block = "10.0.0.0/16"
 
   tags = {
-    Name = "devopsshack-vpc"
+    Name = "muhannad-vpc"
   }
 }
 
-resource "aws_subnet" "devopsshack_subnet" {
+resource "aws_subnet" "muhannad_subnet" {
   count = 2
-  vpc_id                  = aws_vpc.devopsshack_vpc.id
-  cidr_block              = cidrsubnet(aws_vpc.devopsshack_vpc.cidr_block, 8, count.index)
+  vpc_id                  = aws_vpc.muhannad_vpc.id
+  cidr_block              = cidrsubnet(aws_vpc.muhannad_vpc.cidr_block, 8, count.index)
   availability_zone       = element(["ap-south-1a", "ap-south-1b"], count.index)
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "devopsshack-subnet-${count.index}"
+    Name = "muhannad-subnet-${count.index}"
   }
 }
 
-resource "aws_internet_gateway" "devopsshack_igw" {
-  vpc_id = aws_vpc.devopsshack_vpc.id
+resource "aws_internet_gateway" "muhannad_igw" {
+  vpc_id = aws_vpc.muhannad_vpc.id
 
   tags = {
-    Name = "devopsshack-igw"
+    Name = "muhannad-igw"
   }
 }
 
-resource "aws_route_table" "devopsshack_route_table" {
-  vpc_id = aws_vpc.devopsshack_vpc.id
+resource "aws_route_table" "muhannad_route_table" {
+  vpc_id = aws_vpc.muhannad_vpc.id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.devopsshack_igw.id
+    gateway_id = aws_internet_gateway.muhannad_igw.id
   }
 
   tags = {
-    Name = "devopsshack-route-table"
+    Name = "muhannad-route-table"
   }
 }
 
 resource "aws_route_table_association" "a" {
   count          = 2
-  subnet_id      = aws_subnet.devopsshack_subnet[count.index].id
-  route_table_id = aws_route_table.devopsshack_route_table.id
+  subnet_id      = aws_subnet.muhannad_subnet[count.index].id
+  route_table_id = aws_route_table.muhannad_route_table.id
 }
 
-resource "aws_security_group" "devopsshack_cluster_sg" {
-  vpc_id = aws_vpc.devopsshack_vpc.id
+resource "aws_security_group" "muhannad_cluster_sg" {
+  vpc_id = aws_vpc.muhannad_vpc.id
 
   egress {
     from_port   = 0
@@ -61,12 +61,12 @@ resource "aws_security_group" "devopsshack_cluster_sg" {
   }
 
   tags = {
-    Name = "devopsshack-cluster-sg"
+    Name = "muhannad-cluster-sg"
   }
 }
 
-resource "aws_security_group" "devopsshack_node_sg" {
-  vpc_id = aws_vpc.devopsshack_vpc.id
+resource "aws_security_group" "muhannad_node_sg" {
+  vpc_id = aws_vpc.muhannad_vpc.id
 
   ingress {
     from_port   = 0
@@ -83,11 +83,11 @@ resource "aws_security_group" "devopsshack_node_sg" {
   }
 
   tags = {
-    Name = "devopsshack-node-sg"
+    Name = "muhannad-node-sg"
   }
 }
 
-resource "aws_eks_cluster" "devopsshack" {
+resource "aws_eks_cluster" "muhannad-eks" {
   name     = "devopsshack-cluster"
   role_arn = aws_iam_role.devopsshack_cluster_role.arn
 
