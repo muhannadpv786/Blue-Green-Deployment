@@ -89,10 +89,10 @@ resource "aws_security_group" "muhannad_node_sg" {
 
 resource "aws_eks_cluster" "muhannad" {
   name     = "muhannad-cluster"
-  role_arn = aws_iam_role.devopsshack_cluster_role.arn
+  role_arn = aws_iam_role.muhannad_cluster_role.arn
 
   vpc_config {
-    subnet_ids         = aws_subnet.devopsshack_subnet[*].id
+    subnet_ids         = aws_subnet.muhannad_subnet[*].id
     security_group_ids = [aws_security_group.muhannad_cluster_sg.id]
   }
 }
