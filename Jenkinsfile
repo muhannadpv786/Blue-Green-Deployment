@@ -1,7 +1,12 @@
 pipeline {
     agent any
+
+     tools {
+      
+      maven 'maven3'
+    }
     
-    parameters {
+      parameters {
         choice(name: 'DEPLOY_ENV', choices: ['blue', 'green'], description: 'Choose which environment to deploy: Blue or Green')
         choice(name: 'DOCKER_TAG', choices: ['blue', 'green'], description: 'Choose the Docker image tag for the deployment')
         booleanParam(name: 'SWITCH_TRAFFIC', defaultValue: false, description: 'Switch traffic between Blue and Green')
@@ -14,28 +19,63 @@ pipeline {
         SCANNER_HOME= tool 'sonar-scanner'
     }
 
-    stages {
+    
+     stages {
         stage('Git Checkout') {
             steps {
                git branch: 'main', url: 'https://github.com/muhannadpv786/Blue-Green-Deployment.git'
             }
         }
         
-        stage('SonarQube Analysis') {
+        stage('Compile') {
+            steps {
+                sh 'mvn compile'
+            }
+        }
+        
+        stage('Unit Test') {
+            steps {
+                sh 'mvn test -DskipTests=true'
+            }
+        }
+        
+         stage('Trivy FS Scan') {
+            steps {
+                sh 'trivy fs --format table -o fs.html .'
+            }
+        }
+        
+        stage('SonarQube Analsyis') {
             steps {
                 withSonarQubeEnv('sonar') {
-                    sh "$SCANNER_HOME/bin/sonar-scanner -Dsonar.projectKey=nodejsmysql -Dsonar.projectName=nodejsmysql"
+                    sh "$SCANNER_HOME/bin/sonar-scanner -Dsonar.projectKey=multitier -Dsonar.projectNmae=multitier -Dsonar.java.binaries=target"
                 }
             }
+        }    
+        stage('Qulity Gate check') {
+            steps {
+               timeout(time: 1, unit: 'HOURS') {
+                  waitForQualityGate abortPipeline: false
+                 } 
+            }      
         }
         
-        stage('Trivy FS Scan') {
+        
+         stage('Build Application') {
             steps {
-                sh "trivy fs --format table -o fs.html ."
+             sh 'mvn package -DskipTests=true' 
             }
         }
         
-        stage('Docker build') {
+        stage('Publish Artifact') {
+            steps {
+              withMaven(globalMavenSettingsConfig: 'settings-maven', jdk: ' ', maven: 'maven3', mavenSettingsConfig: '', traceability: true) {
+                  sh 'mvn deploy -DskipTests=true'
+               }  
+            }
+        }
+        
+       stage('Docker build') {
             steps {
                 script {
                     withDockerRegistry(credentialsId: 'docker-cred') {
@@ -45,13 +85,14 @@ pipeline {
             }
         }
         
-        stage('Trivy Image Scan') {
+     
+     stage('Trivy Image Scan') {
             steps {
                 sh "trivy image --format table -o image.html ${IMAGE_NAME}:${TAG}"
             }
         }
         
-        stage('Docker Push Image') {
+         stage('Docker Push Image') {
             steps {
                 script {
                     withDockerRegistry(credentialsId: 'docker-cred') {
@@ -60,21 +101,22 @@ pipeline {
                 }
             }
         }
-        
-        stage('Deploy MySQL Deployment and Service') {
+     
+     
+      stage('Deploy MySQL Deployment and Service') {
             steps {
                 script {
-                    withKubeConfig(caCertificate: '', clusterName: 'muhannad-eks', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://ABB052150BF896BA5B42900B3DB3A5D4.gr7.ap-south-1.eks.amazonaws.com') {
+                    withKubeConfig(caCertificate: '', clusterName: 'muhannad-cluster', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://DA8A2FCC8F18ED2F4CFC3A137F50479A.gr7.ap-south-1.eks.amazonaws.com') {
                         sh "kubectl apply -f mysql-ds.yml -n ${KUBE_NAMESPACE}"  // Ensure you have the MySQL deployment YAML ready
                     }
                 }
             }
         }
         
-        stage('Deploy SVC-APP') {
+         stage('Deploy SVC-APP') {
             steps {
                 script {
-                    withKubeConfig(caCertificate: '', clusterName: 'muhannad-eks', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://ABB052150BF896BA5B42900B3DB3A5D4.gr7.ap-south-1.eks.amazonaws.com') {
+                    withKubeConfig(caCertificate: '', clusterName: 'muhannad-cluster', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://DA8A2FCC8F18ED2F4CFC3A137F50479A.gr7.ap-south-1.eks.amazonaws.com') {
                         sh """ if ! kubectl get svc bankapp-service -n ${KUBE_NAMESPACE}; then
                                 kubectl apply -f bankapp-service.yml -n ${KUBE_NAMESPACE}
                               fi
@@ -94,14 +136,14 @@ pipeline {
                         deploymentFile = 'app-deployment-green.yml'
                     }
 
-                    withKubeConfig(caCertificate: '', clusterName: 'muhannad-eks', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://ABB052150BF896BA5B42900B3DB3A5D4.gr7.ap-south-1.eks.amazonaws.com') {
+                    withKubeConfig(caCertificate: '', clusterName: 'muhannad-cluster', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://DA8A2FCC8F18ED2F4CFC3A137F50479A.gr7.ap-south-1.eks.amazonaws.com') {
                         sh "kubectl apply -f ${deploymentFile} -n ${KUBE_NAMESPACE}"
                     }
                 }
             }
         }
         
-        stage('Switch Traffic Between Blue & Green Environment') {
+         stage('Switch Traffic Between Blue & Green Environment') {
             when {
                 expression { return params.SWITCH_TRAFFIC }
             }
@@ -110,7 +152,7 @@ pipeline {
                     def newEnv = params.DEPLOY_ENV
 
                     // Always switch traffic based on DEPLOY_ENV
-                    withKubeConfig(caCertificate: '', clusterName: 'muhannad-eks', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://ABB052150BF896BA5B42900B3DB3A5D4.gr7.ap-south-1.eks.amazonaws.com') {
+                    withKubeConfig(caCertificate: '', clusterName: 'muhannad-cluster', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://DA8A2FCC8F18ED2F4CFC3A137F50479A.gr7.ap-south-1.eks.amazonaws.com') {
                         sh '''
                             kubectl patch service bankapp-service -p "{\\"spec\\": {\\"selector\\": {\\"app\\": \\"bankapp\\", \\"version\\": \\"''' + newEnv + '''\\"}}}" -n ${KUBE_NAMESPACE}
                         '''
@@ -120,11 +162,12 @@ pipeline {
             }
         }
         
-        stage('Verify Deployment') {
+         
+         stage('Verify Deployment') {
             steps {
                 script {
                     def verifyEnv = params.DEPLOY_ENV
-                    withKubeConfig(caCertificate: '', clusterName: 'muhannad-eks', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://ABB052150BF896BA5B42900B3DB3A5D4.gr7.ap-south-1.eks.amazonaws.com') {
+                    withKubeConfig(caCertificate: '', clusterName: 'muhannad-cluster', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://DA8A2FCC8F18ED2F4CFC3A137F50479A.gr7.ap-south-1.eks.amazonaws.com') {
                         sh """
                         kubectl get pods -l version=${verifyEnv} -n ${KUBE_NAMESPACE}
                         kubectl get svc bankapp-service -n ${KUBE_NAMESPACE}
@@ -135,3 +178,5 @@ pipeline {
         }
     }
 }
+       
+        
